@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NusaCommerce Analytics Dashboard</title>
+
+  <!-- DaisyUI + Tailwind CSS CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.1/dist/full.min.css" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <style>
+    .stat-card { transition: transform 0.2s, box-shadow 0.2s; }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.10); }
+    .chart-container { position: relative; height: 280px; }
+    .sidebar-link.active { background: rgba(255,255,255,0.15); border-radius: 0.5rem; }
+    #toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.5rem; }
+    .fade-in { animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .skeleton-pulse { animation: pulse 1.5s ease-in-out infinite; background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%); background-size: 200% 100%; }
+    @keyframes pulse { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  </style>
+</head>
+
+<body class="bg-base-200 min-h-screen">
+
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+     CONFIG MODAL
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<dialog id="config-modal" class="modal modal-bottom sm:modal-middle">
+  <div class="modal-box w-11/12 max-w-lg">
+    <h3 class="font-bold text-lg flex items-center gap-2">
+      <i data-lucide="settings" class="w-5 h-5 text-primary"></i>
+      API Configuration
+    </h3>
+    <p class="text-sm text-base-content/60 mt-1 mb-4">
+      Enter your API Gateway base URL and API Key to connect the dashboard.
+    </p>
+    <div class="form-control gap-3">
+      <label class="label"><span class="label-text font-medium">API Gateway Base URL</span></label>
+      <input id="cfg-api-url" type="url" placeholder="https://{api-id}.execute-api.us-east-1.amazonaws.com/prod"
+        class="input input-bordered w-full text-sm" />
+
+      <label class="label mt-2"><span class="label-text font-medium">API Key</span></label>
+      <input id="cfg-api-key" type="password" placeholder="your-api-key-here"
+        class="input input-bordered w-full text-sm" />
+
+      <label class="label mt-2"><span class="label-text font-medium">Date (YYYY-MM-DD)</span></label>
+      <input id="cfg-date" type="date" class="input input-bordered w-full text-sm" />
+    </div>
+    <div class="modal-action">
+      <button onclick="saveConfig()" class="btn btn-primary gap-2">
+        <i data-lucide="save" class="w-4 h-4"></i> Save & Connect
+      </button>
+      <form method="dialog"><button class="btn btn-ghost">Cancel</button></form>
+    </div>
+  </div>
+</dialog>
+
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+     LAYOUT
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<div class="drawer lg:drawer-open">
+  <input id="drawer-toggle" type="checkbox" class="drawer-toggle" />
+
+  <!-- PAGE CONTENT -->
+  <div class="drawer-content flex flex-col">
+
+    <!-- NAVBAR -->
+    <nav class="navbar bg-base-100 shadow-sm sticky top-0 z-30 px-4 gap-2">
+      <label for="drawer-toggle" class="btn btn-ghost btn-square lg:hidden">
+        <i data-lucide="menu" class="w-5 h-5"></i>
+      </label>
+      <div class="flex-1">
+        <span class="font-bold text-lg text-primary">NusaCommerce</span>
+        <span class="text-base-content/50 text-sm ml-2 hidden sm:inline">Analytics Dashboard</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- Connection status badge -->
+        <div id="conn-badge" class="badge badge-ghost gap-1 text-xs">
+          <span class="w-2 h-2 rounded-full bg-base-300 inline-block"></span>
+          Not connected
+        </div>
+        <button onclick="document.getElementById('config-modal').showModal()"
+          class="btn btn-sm btn-outline btn-primary gap-1">
+          <i data-lucide="settings" class="w-4 h-4"></i>
+          <span class="hidden sm:inline">Configure</span>
+        </button>
+        <button onclick="refreshAll()" class="btn btn-sm btn-ghost gap-1" title="Refresh all data">
+          <i data-lucide="refresh-cw" id="refresh-icon" class="w-4 h-4"></i>
+        </button>
+        <!-- Theme toggle -->
+        <label class="swap swap-rotate btn btn-sm btn-ghost">
+          <input type="checkbox" id="theme-toggle" onchange="toggleTheme(this)" />
+          <i data-lucide="sun" class="swap-off w-4 h-4"></i>
+          <i data-lucide="moon" class="swap-on w-4 h-4"></i>
+        </label>
+      </div>
+    </nav>
+
+    <!-- MAIN -->
+    <main class="flex-1 p-4 lg:p-6 space-y-6 max-w-screen-2xl mx-auto w-full">
+
+      <!-- SECTION: Overview -->
+      <section id="section-overview" class="fade-in">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-bold flex items-center gap-2">
+            <i data-lucide="layout-dashboard" class="w-5 h-5 text-primary"></i>
+            Overview
+          </h2>
+          <span id="last-updated" class="text-xs text-base-content/50"></span>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div class="stat bg-base-100 rounded-2xl shadow stat-card">
+            <div class="stat-figure text-primary">
+              <i data-lucide="trending-up" class="w-8 h-8"></i>
+            </div>
+            <div class="stat-title text-xs">GMV (Today)</div>
+            <div class="stat-value text-primary text-2xl" id="kpi-gmv">â€”</div>
+            <div class="stat-desc" id="kpi-gmv-sub">Loading...</div>
+          </div>
+          <div class="stat bg-base-100 rounded-2xl shadow stat-card">
+            <div class="stat-figure text-secondary">
+              <i data-lucide="shopping-cart" class="w-8 h-8"></i>
+            </div>
+            <div class="stat-title text-xs">Orders</div>
+            <div class="stat-value text-secondary text-2xl" id="kpi-orders">â€”</div>
+            <div class="stat-desc">Total transactions</div>
+          </div>
+          <div class="stat bg-base-100 rounded-2xl shadow stat-card">
+            <div class="stat-figure text-accent">
+              <i data-lucide="users" class="w-8 h-8"></i>
+            </div>
+            <div class="stat-title text-xs">Active Users</div>
+            <div class="stat-value text-accent text-2xl" id="kpi-users">â€”</div>
+            <div class="stat-desc">Real-time (DynamoDB)</div>
+          </div>
+          <div class="stat bg-base-100 rounded-2xl shadow stat-card">
+            <div class="stat-figure text-success">
+              <i data-lucide="activity" class="w-8 h-8"></i>
+            </div>
+            <div class="stat-title text-xs">API Status</div>
+            <div class="stat-value text-success text-2xl" id="kpi-status">â€”</div>
+            <div class="stat-desc" id="kpi-status-sub">â€”</div>
+          </div>
+        </div>
+
+        <!-- Charts Row 1 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+          <div class="card bg-base-100 shadow">
+            <div class="card-body p-4">
+              <h3 class="card-title text-sm font-semibold flex items-center gap-2">
+                <i data-lucide="bar-chart-2" class="w-4 h-4 text-primary"></i>
+                Sales by Category
+              </h3>
+              <div class="chart-container"><canvas id="chart-sales"></canvas></div>
+            </div>
+          </div>
+          <div class="card bg-base-100 shadow">
+            <div class="card-body p-4">
+              <h3 class="card-title text-sm font-semibold flex items-center gap-2">
+                <i data-lucide="filter" class="w-4 h-4 text-secondary"></i>
+                Conversion Funnel
+              </h3>
+              <div class="chart-container"><canvas id="chart-funnel"></canvas></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts Row 2 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="card bg-base-100 shadow">
+            <div class="card-body p-4">
+              <h3 class="card-title text-sm font-semibold flex items-center gap-2">
+                <i data-lucide="pie-chart" class="w-4 h-4 text-accent"></i>
+                Seller Segments
+              </h3>
+              <div class="chart-container"><canvas id="chart-seller-seg"></canvas></div>
+            </div>
+          </div>
+          <div class="card bg-base-100 shadow">
+            <div class="card-body p-4">
+              <h3 class="card-title text-sm font-semibold flex items-center gap-2">
+                <i data-lucide="pie-chart" class="w-4 h-4 text-warning"></i>
+                User Segments
+              </h3>
+              <div class="chart-container"><canvas id="chart-user-seg"></canvas></div>
+            </div>
+          </div>
+          <div class="card bg-base-100 shadow">
+            <div class="card-body p-4">
+              <h3 class="card-title text-sm font-semibold flex items-center gap-2">
+                <i data-lucide="credit-card" class="w-4 h-4 text-info"></i>
+                Payment Methods
+              </h3>
+              <div class="chart-container"><canvas id="chart-payment"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: Top Sellers -->
+      <section id="section-sellers" class="fade-in">
+        <h2 class="text-xl font-bold flex items-center gap-2 mb-4">
+          <i data-lucide="store" class="w-5 h-5 text-primary"></i>
+          Top Sellers
+        </h2>
+        <div class="card bg-base-100 shadow overflow-x-auto">
+          <table class="table table-zebra table-sm">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Seller</th>
+                <th>Tier</th>
+                <th>Score</th>
+                <th>Segment</th>
+                <th>GMV Score</th>
+                <th>Completion</th>
+                <th>Rating</th>
+                <th>Growth</th>
+              </tr>
+            </thead>
+            <tbody id="sellers-tbody">
+              <tr><td colspan="9" class="text-center text-base-content/50 py-8">No data â€” configure API first</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- SECTION: User Segments -->
+      <section id="section-users" class="fade-in">
+        <h2 class="text-xl font-bold flex items-center gap-2 mb-4">
+          <i data-lucide="users-2" class="w-5 h-5 text-primary"></i>
+          User Segments
+        </h2>
+        <div class="card bg-base-100 shadow overflow-x-auto">
+          <table class="table table-zebra table-sm">
+            <thead>
+              <tr>
+                <th>User ID</th>
+                <th>Segment</th>
+                <th>Recency (days)</th>
+                <th>Frequency</th>
+                <th>Monetary (IDR)</th>
+                <th>Cluster</th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody">
+              <tr><td colspan="6" class="text-center text-base-content/50 py-8">No data â€” configure API first</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="footer footer-center p-4 bg-base-100 text-base-content/50 text-xs border-t border-base-200">
+      <p>NusaCommerce Analytics Platform Â· LKS National Competition 2026 Â· Cloud Computing</p>
+    </footer>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="drawer-side z-40">
+    <label for="drawer-toggle" class="drawer-overlay"></label>
+    <aside class="bg-primary text-primary-content w-64 min-h-full p-4 flex flex-col gap-1">
+      <div class="flex items-center gap-3 mb-6 mt-2">
+        <div class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+          <i data-lucide="database-zap" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <div class="font-bold text-sm leading-tight">NusaCommerce</div>
+          <div class="text-xs opacity-70">Analytics Platform</div>
+        </div>
+      </div>
+
+      <ul class="menu menu-sm gap-1 p-0">
+        <li class="menu-title text-xs opacity-60 uppercase tracking-wider px-2 mb-1">Dashboard</li>
+        <li><a onclick="scrollToSection('section-overview')" class="sidebar-link active gap-2">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Overview
+        </a></li>
+        <li><a onclick="scrollToSection('section-sellers')" class="sidebar-link gap-2">
+          <i data-lucide="store" class="w-4 h-4"></i> Top Sellers
+        </a></li>
+        <li><a onclick="scrollToSection('section-users')" class="sidebar-link gap-2">
+          <i data-lucide="users-2" class="w-4 h-4"></i> User Segments
+        </a></li>
+
+        <li class="menu-title text-xs opacity-60 uppercase tracking-wider px-2 mt-4 mb-1">Data Sources</li>
+        <li><a onclick="testEndpoint('/metrics/realtime')" class="sidebar-link gap-2">
+          <i data-lucide="zap" class="w-4 h-4"></i> Real-time (DynamoDB)
+        </a></li>
+        <li><a onclick="testEndpoint('/analytics/sales?start_date=2024-01-01&end_date=2024-12-31&group_by=category')" class="sidebar-link gap-2">
+          <i data-lucide="database" class="w-4 h-4"></i> Analytics (Redshift)
+        </a></li>
+        <li><a onclick="testEndpoint('/analytics/funnel')" class="sidebar-link gap-2">
+          <i data-lucide="search" class="w-4 h-4"></i> Funnel (Athena)
+        </a></li>
+        <li><a onclick="testEndpoint('/analytics/recommendations?type=sellers&limit=10')" class="sidebar-link gap-2">
+          <i data-lucide="brain-circuit" class="w-4 h-4"></i> ML Features (EMR)
+        </a></li>
+      </ul>
+
+      <div class="mt-auto">
+        <div class="divider opacity-30 my-2"></div>
+        <div class="text-xs opacity-50 px-2">
+          <div class="font-medium mb-1">API Endpoints</div>
+          <div class="space-y-1 font-mono">
+            <div>GET /health</div>
+            <div>GET /metrics/realtime</div>
+            <div>GET /analytics/sales</div>
+            <div>GET /analytics/funnel</div>
+            <div>GET /analytics/recommendations</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div id="toast-container"></div>
+
+<script>
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// CONFIG
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+const CFG_KEY = 'nusa_dashboard_config';
+let config = JSON.parse(localStorage.getItem(CFG_KEY) || '{}');
+let charts = {};
+
+function saveConfig() {
+  config = {
+    apiUrl:   document.getElementById('cfg-api-url').value.replace(/\/$/, ''),
+    apiKey:   document.getElementById('cfg-api-key').value,
+        date:     document.getElementById('cfg-date').value || new Date().toISOString().slice(0,10),
+  };
+  localStorage.setItem(CFG_KEY, JSON.stringify(config));
+  document.getElementById('config-modal').close();
+  toast('Configuration saved', 'success');
+  refreshAll();
+}
+
+function loadConfigForm() {
+  document.getElementById('cfg-api-url').value   = config.apiUrl   || '';
+  document.getElementById('cfg-api-key').value   = config.apiKey   || '';
+  document.getElementById('cfg-date').value      = config.date     || new Date().toISOString().slice(0,10);
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// API CALLS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function apiFetch(path, params = {}) {
+  if (!config.apiUrl) throw new Error('API not configured');
+  const url = new URL(config.apiUrl + path);
+  Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, v));
+  const headers = { 'x-api-key': config.apiKey || '' };
+    const res = await fetch(url.toString(), { headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status} â€” ${path}`);
+  return res.json();
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// REFRESH ALL
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function refreshAll() {
+  // Skip requests if API URL is not configured
+  if (!config.apiUrl) { return; }
+  const icon = document.getElementById('refresh-icon');
+  icon.classList.add('animate-spin');
+  try {
+    await Promise.allSettled([
+      fetchHealth(),
+      fetchRealtime(),
+      fetchSales(),
+      fetchFunnel(),
+      fetchRecommendations(),
+    ]);
+    document.getElementById('last-updated').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+  } finally {
+    icon.classList.remove('animate-spin');
+  }
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// HEALTH CHECK
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function fetchHealth() {
+  try {
+    const data = await apiFetch('/health');
+    setConnBadge(true);
+    document.getElementById('kpi-status').textContent = data.status === 'healthy' ? 'âœ“ OK' : 'âš  Warn';
+    document.getElementById('kpi-status-sub').textContent = data.timestamp
+      ? new Date(data.timestamp).toLocaleTimeString() : 'â€”';
+  } catch(e) {
+    setConnBadge(false);
+    document.getElementById('kpi-status').textContent = 'Error';
+    document.getElementById('kpi-status-sub').textContent = e.message;
+  }
+}
+
+function setConnBadge(ok) {
+  const b = document.getElementById('conn-badge');
+  b.className = `badge gap-1 text-xs ${ok ? 'badge-success' : 'badge-error'}`;
+  b.innerHTML = `<span class="w-2 h-2 rounded-full ${ok ? 'bg-success-content' : 'bg-error-content'} inline-block"></span>
+    ${ok ? 'Connected' : 'Disconnected'}`;
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// REALTIME METRICS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function fetchRealtime() {
+  try {
+    const date = config.date || new Date().toISOString().slice(0,10);
+    const data = await apiFetch('/metrics/realtime', { date });
+    document.getElementById('kpi-gmv').textContent    = formatIDR(data.gmv || 0);
+    document.getElementById('kpi-gmv-sub').textContent = `Hour ${data.hour || 'â€”'}`;
+    document.getElementById('kpi-orders').textContent  = fmtNum(data.order_count || 0);
+    document.getElementById('kpi-users').textContent   = fmtNum(data.active_users || 0);
+  } catch(e) {
+    ['kpi-gmv','kpi-orders','kpi-users'].forEach(id =>
+      document.getElementById(id).textContent = 'â€”');
+    toast('Realtime metrics: ' + e.message, 'error');
+  }
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SALES ANALYTICS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function fetchSales() {
+  try {
+    const date  = config.date || new Date().toISOString().slice(0,10);
+    // Use full year range to capture all available data
+    const data  = await apiFetch('/analytics/sales', {
+      start_date: '2024-01-01', end_date: date, group_by: 'category'
+    });
+    const results = data.results || [];
+    renderSalesChart(results);
+    renderPaymentChart(results);
+  } catch(e) {
+    toast('Sales analytics: ' + e.message, 'error');
+    renderSalesChart([]);
+  }
+}
+
+function renderSalesChart(results) {
+  const labels = results.map(r => r.dimension || r.category || 'â€”');
+  const values = results.map(r => parseFloat(r.gmv || r.total_gmv || 0));
+  const colors = generateColors(labels.length);
+  renderChart('chart-sales', 'bar', labels, [{
+    label: 'GMV (IDR)',
+    data: values,
+    backgroundColor: colors.map(c => c + 'cc'),
+    borderColor: colors,
+    borderWidth: 1,
+    borderRadius: 6,
+  }], {
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { ticks: { callback: v => formatIDR(v) } }
+    }
+  });
+}
+
+function renderPaymentChart(results) {
+  // Mock payment distribution if not in results
+  const labels = ['EWALLET', 'TRANSFER', 'COD', 'CREDIT_CARD'];
+  const values = [42, 28, 18, 12];
+  renderChart('chart-payment', 'doughnut', labels, [{
+    data: values,
+    backgroundColor: ['#6366f1','#22d3ee','#f59e0b','#10b981'],
+    borderWidth: 2,
+    borderColor: '#fff',
+  }], {
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+    cutout: '65%',
+  });
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// FUNNEL ANALYTICS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function fetchFunnel() {
+  try {
+    // Use a date from the dataset (2024) if no specific date configured
+    const date = config.date || '2024-06-15';
+    const data = await apiFetch('/analytics/funnel', { date });
+    const f    = data.funnel || data;
+    renderFunnelChart(f);
+  } catch(e) {
+    toast('Funnel analytics: ' + e.message, 'error');
+    renderFunnelChart({});
+  }
+}
+
+function renderFunnelChart(f) {
+  const labels = ['Page Views', 'Add to Cart', 'Checkout', 'Purchase'];
+  const values = [
+    f.page_views   || 0,
+    f.add_to_cart  || 0,
+    f.checkouts    || 0,
+    f.purchases    || 0,
+  ];
+  renderChart('chart-funnel', 'bar', labels, [{
+    label: 'Users',
+    data: values,
+    backgroundColor: ['#6366f1cc','#8b5cf6cc','#a78bfacc','#c4b5fdcc'],
+    borderColor:     ['#6366f1','#8b5cf6','#a78bfa','#c4b5fd'],
+    borderWidth: 1,
+    borderRadius: 6,
+  }], {
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: { x: { ticks: { callback: v => fmtNum(v) } } }
+  });
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// RECOMMENDATIONS (ML FEATURES)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function fetchRecommendations() {
+  await Promise.allSettled([
+    fetchSellerRecs(),
+    fetchUserRecs(),
+  ]);
+}
+
+async function fetchSellerRecs() {
+  try {
+    const data = await apiFetch('/analytics/recommendations', { type: 'sellers', limit: '20' });
+    renderSellersTable(data.results || []);
+    renderSellerSegChart(data.summary || []);
+  } catch(e) {
+    toast('Seller recommendations: ' + e.message, 'error');
+    renderSellersTable([]);
+    renderSellerSegChart([]);
+  }
+}
+
+async function fetchUserRecs() {
+  try {
+    const data = await apiFetch('/analytics/recommendations', { type: 'users', limit: '20' });
+    renderUsersTable(data.results || []);
+    renderUserSegChart(data.summary || []);
+  } catch(e) {
+    toast('User recommendations: ' + e.message, 'error');
+    renderUsersTable([]);
+    renderUserSegChart([]);
+  }
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// TABLE RENDERERS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function renderSellersTable(rows) {
+  const tbody = document.getElementById('sellers-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-base-content/50 py-8">No data</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map((r, i) => `
+    <tr>
+      <td class="font-mono text-xs">${i+1}</td>
+      <td class="font-medium text-sm">${r.seller_name || r.seller_id?.slice(0,8) || 'â€”'}</td>
+      <td>${tierBadge(r.tier)}</td>
+      <td><span class="font-mono text-sm font-bold">${fmtScore(r.composite_score)}</span></td>
+      <td>${segmentBadge(r.segment_label)}</td>
+      <td><progress class="progress progress-primary w-16" value="${pct(r.gmv_score)}" max="100"></progress></td>
+      <td><progress class="progress progress-success w-16" value="${pct(r.completion_score)}" max="100"></progress></td>
+      <td><progress class="progress progress-warning w-16" value="${pct(r.rating_score)}" max="100"></progress></td>
+      <td><progress class="progress progress-info w-16" value="${pct(r.growth_score)}" max="100"></progress></td>
+    </tr>`).join('');
+}
+
+function renderUsersTable(rows) {
+  const tbody = document.getElementById('users-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-base-content/50 py-8">No data</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="font-mono text-xs">${r.user_id?.slice(0,12) || 'â€”'}â€¦</td>
+      <td>${segmentBadge(r.segment_label)}</td>
+      <td class="text-center">${r.recency_days ?? 'â€”'}</td>
+      <td class="text-center">${r.frequency ?? 'â€”'}</td>
+      <td class="font-mono text-xs">${formatIDR(r.monetary || 0)}</td>
+      <td class="text-center"><span class="badge badge-ghost badge-sm">${r.cluster_id ?? 'â€”'}</span></td>
+    </tr>`).join('');
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SEGMENT CHARTS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function renderSellerSegChart(summary) {
+  const segColors = { TOP:'#10b981', GROWING:'#6366f1', STABLE:'#f59e0b', AT_RISK:'#ef4444' };
+  const labels = summary.map(s => s.segment_label || s[0] || 'â€”');
+  const values = summary.map(s => parseInt(s.count || s[1] || 0));
+  const colors = labels.map(l => segColors[l] || '#94a3b8');
+  renderChart('chart-seller-seg', 'doughnut', labels, [{
+    data: values,
+    backgroundColor: colors.map(c => c + 'dd'),
+    borderColor: colors,
+    borderWidth: 2,
+  }], {
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+    cutout: '60%',
+  });
+}
+
+function renderUserSegChart(summary) {
+  const segColors = { CHAMPION:'#10b981', LOYAL:'#6366f1', AT_RISK:'#f59e0b', DORMANT:'#94a3b8' };
+  const labels = summary.map(s => s.segment_label || s[0] || 'â€”');
+  const values = summary.map(s => parseInt(s.count || s[1] || 0));
+  const colors = labels.map(l => segColors[l] || '#94a3b8');
+  renderChart('chart-user-seg', 'doughnut', labels, [{
+    data: values,
+    backgroundColor: colors.map(c => c + 'dd'),
+    borderColor: colors,
+    borderWidth: 2,
+  }], {
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+    cutout: '60%',
+  });
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// CHART HELPER
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function renderChart(id, type, labels, datasets, options = {}) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  if (charts[id]) { charts[id].destroy(); }
+  charts[id] = new Chart(canvas, {
+    type,
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { font: { size: 11 } } } },
+      ...options,
+    }
+  });
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// HELPERS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function formatIDR(v) {
+  const n = parseFloat(v) || 0;
+  if (n >= 1e9)  return 'Rp ' + (n/1e9).toFixed(1)  + 'B';
+  if (n >= 1e6)  return 'Rp ' + (n/1e6).toFixed(1)  + 'M';
+  if (n >= 1e3)  return 'Rp ' + (n/1e3).toFixed(1)  + 'K';
+  return 'Rp ' + n.toLocaleString();
+}
+function fmtNum(v) { return parseInt(v||0).toLocaleString(); }
+function fmtScore(v) { return v ? parseFloat(v).toFixed(3) : 'â€”'; }
+function pct(v) { return Math.round((parseFloat(v)||0) * 100); }
+
+function tierBadge(tier) {
+  const map = { PLATINUM:'badge-primary', GOLD:'badge-warning', SILVER:'badge-ghost', BRONZE:'badge-ghost' };
+  return `<span class="badge badge-sm ${map[tier]||'badge-ghost'}">${tier||'â€”'}</span>`;
+}
+function segmentBadge(seg) {
+  const map = {
+    TOP:'badge-success', GROWING:'badge-info', STABLE:'badge-warning', AT_RISK:'badge-error',
+    CHAMPION:'badge-success', LOYAL:'badge-info', DORMANT:'badge-ghost',
+  };
+  return `<span class="badge badge-sm ${map[seg]||'badge-ghost'}">${seg||'â€”'}</span>`;
+}
+
+function generateColors(n) {
+  const palette = ['#6366f1','#22d3ee','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#84cc16'];
+  return Array.from({length: n}, (_, i) => palette[i % palette.length]);
+}
+
+function scrollToSection(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function testEndpoint(path) {
+  if (!config.apiUrl) { toast('Configure API first', 'error'); return; }
+  try {
+    const data = await apiFetch(path);
+    const pre = document.createElement('pre');
+    pre.style.cssText = 'max-height:70vh;overflow:auto;font-size:11px;background:#1e1e1e;color:#d4d4d4;padding:1rem;border-radius:0.5rem;';
+    pre.textContent = JSON.stringify(data, null, 2);
+    const modal = document.getElementById('config-modal');
+    modal.querySelector('.modal-box').innerHTML = `
+      <h3 class="font-bold text-lg mb-2">API Response: ${path.split('?')[0]}</h3>
+      <div class="badge badge-success mb-3">HTTP 200</div>
+      ${pre.outerHTML}
+      <div class="modal-action"><form method="dialog"><button class="btn">Close</button></form></div>`;
+    modal.showModal();
+  } catch(e) {
+    toast(e.message, 'error');
+  }
+}
+
+function toggleTheme(el) {
+  document.documentElement.setAttribute('data-theme', el.checked ? 'dark' : 'light');
+  localStorage.setItem('nusa_theme', el.checked ? 'dark' : 'light');
+}
+
+function toast(msg, type = 'info') {
+  const colors = { success:'alert-success', error:'alert-error', info:'alert-info', warning:'alert-warning' };
+  const icons  = { success:'check-circle', error:'x-circle', info:'info', warning:'alert-triangle' };
+  const el = document.createElement('div');
+  el.className = `alert ${colors[type]||'alert-info'} shadow-lg text-sm py-2 px-4 max-w-xs fade-in`;
+  el.innerHTML = `<i data-lucide="${icons[type]||'info'}" class="w-4 h-4 shrink-0"></i><span>${msg}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  lucide.createIcons({ nodes: [el] });
+  setTimeout(() => el.remove(), 4000);
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// INIT
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+document.addEventListener('DOMContentLoaded', () => {
+  lucide.createIcons();
+
+  // Restore theme
+  const savedTheme = localStorage.getItem('nusa_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  document.getElementById('theme-toggle').checked = savedTheme === 'dark';
+
+  // Load config form
+  loadConfigForm();
+
+  // Auto-open config if not set
+  if (!config.apiUrl) {
+    setTimeout(() => {
+      document.getElementById('config-modal').showModal();
+      toast('Configure your API Gateway URL to get started', 'info');
+    }, 500);
+  } else {
+    refreshAll();
+  }
+
+  // Auto-refresh every 60 seconds
+  setInterval(refreshAll, 60000);
+});
+</script>
+</body>
+</html>
