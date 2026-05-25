@@ -30,7 +30,7 @@ End-to-End Cloud Data & Analytics Pipeline for E-Commerce Intelligence on AWS.
 - **Prefix**: All resources must use `nusa-` prefix
 - **Duration**: 5 hours
 
-Refer to `NusaCommerce_LKS_Module_Final.docx` for complete task instructions.
+Refer to `PDF file` for complete task instructions.
 
 ---
 
