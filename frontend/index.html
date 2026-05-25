@@ -260,6 +260,102 @@
         </div>
       </section>
 
+      <!-- SECTION: Pipeline Workflow (Live Monitoring) -->
+      <section id="section-pipeline" class="fade-in">
+        <h2 class="text-xl font-bold flex items-center gap-2 mb-4">
+          <i data-lucide="workflow" class="w-5 h-5 text-primary"></i>
+          Pipeline Workflow
+        </h2>
+        <div class="card bg-base-100 shadow p-4">
+          <!-- Controls -->
+          <div class="flex flex-wrap items-center gap-3 mb-4">
+            <button onclick="simulatePipeline()" class="btn btn-sm btn-primary gap-1" id="btn-run-pipeline">
+              <i data-lucide="play" class="w-4 h-4"></i> Start Execution
+            </button>
+            <button onclick="resetPipeline()" class="btn btn-sm btn-ghost gap-1">
+              <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Reset
+            </button>
+            <div class="flex-1"></div>
+            <span class="text-xs text-base-content/50" id="pipeline-status-text">Idle</span>
+          </div>
+
+          <!-- Workflow Visualization -->
+          <div class="overflow-x-auto">
+            <div class="flex flex-col items-center gap-2 min-w-[520px] py-4">
+              <!-- ValidateInput -->
+              <div class="pipeline-node">
+                <div id="pn-validate" class="badge badge-lg gap-1 px-4 py-3 font-mono text-xs badge-ghost border-2">
+                  <i data-lucide="shield-check" class="w-3 h-3"></i> ValidateInput
+                </div>
+              </div>
+              <div class="pipeline-arrow text-base-content/20">&darr;</div>
+
+              <!-- ParallelETL -->
+              <div class="pipeline-node border-2 border-dashed border-base-300 rounded-xl p-3 w-full max-w-md" id="pn-parallel-etl">
+                <div class="text-xs text-center font-semibold mb-2 text-base-content/60">ParallelETL</div>
+                <div class="flex justify-center gap-2 flex-wrap">
+                  <div id="pn-etl-txn" class="badge badge-ghost badge-sm gap-1 border"><i data-lucide="database" class="w-3 h-3"></i> Transactions</div>
+                  <div id="pn-etl-ship" class="badge badge-ghost badge-sm gap-1 border"><i data-lucide="truck" class="w-3 h-3"></i> Shipments</div>
+                  <div id="pn-etl-sell" class="badge badge-ghost badge-sm gap-1 border"><i data-lucide="store" class="w-3 h-3"></i> Sellers</div>
+                </div>
+              </div>
+              <div class="pipeline-arrow text-base-content/20">&darr;</div>
+
+              <!-- RunCrawler -->
+              <div class="pipeline-node">
+                <div id="pn-crawler" class="badge badge-lg gap-1 px-4 py-3 font-mono text-xs badge-ghost border-2">
+                  <i data-lucide="search" class="w-3 h-3"></i> RunCrawler
+                </div>
+              </div>
+              <div class="pipeline-arrow text-base-content/20">&darr;</div>
+
+              <!-- ParallelPostProcessing -->
+              <div class="pipeline-node border-2 border-dashed border-base-300 rounded-xl p-3 w-full max-w-md" id="pn-parallel-post">
+                <div class="text-xs text-center font-semibold mb-2 text-base-content/60">ParallelPostProcessing</div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="flex flex-col items-center gap-1">
+                    <div class="text-xs text-base-content/40 font-medium">Branch 1</div>
+                    <div id="pn-redshift" class="badge badge-ghost badge-sm gap-1 border"><i data-lucide="database" class="w-3 h-3"></i> LoadToRedshift</div>
+                    <div class="text-base-content/20 text-xs">&darr;</div>
+                    <div id="pn-refresh" class="badge badge-ghost badge-sm gap-1 border"><i data-lucide="refresh-cw" class="w-3 h-3"></i> RefreshViews</div>
+                  </div>
+                  <div class="flex flex-col items-center gap-1">
+                    <div class="text-xs text-base-content/40 font-medium">Branch 2</div>
+                    <div id="pn-emr-seller" class="badge badge-ghost badge-sm gap-1 border"><i data-lucide="brain-circuit" class="w-3 h-3"></i> SellerScoring</div>
+                    <div class="text-base-content/20 text-xs">&darr;</div>
+                    <div id="pn-emr-user" class="badge badge-ghost badge-sm gap-1 border"><i data-lucide="brain-circuit" class="w-3 h-3"></i> UserSegmentation</div>
+                  </div>
+                </div>
+              </div>
+              <div class="pipeline-arrow text-base-content/20">&darr;</div>
+
+              <!-- LoadMLFeatures -->
+              <div class="pipeline-node">
+                <div id="pn-ml-load" class="badge badge-lg gap-1 px-4 py-3 font-mono text-xs badge-ghost border-2">
+                  <i data-lucide="upload" class="w-3 h-3"></i> LoadMLFeatures
+                </div>
+              </div>
+              <div class="pipeline-arrow text-base-content/20">&darr;</div>
+
+              <!-- NotifySuccess / Failure -->
+              <div class="flex gap-4">
+                <div id="pn-success" class="badge badge-lg gap-1 px-3 py-3 font-mono text-xs badge-ghost border-2">
+                  <i data-lucide="check-circle" class="w-3 h-3"></i> Success
+                </div>
+                <div id="pn-failure" class="badge badge-lg gap-1 px-3 py-3 font-mono text-xs badge-ghost border-2">
+                  <i data-lucide="x-circle" class="w-3 h-3"></i> Failure
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Execution Log -->
+          <div class="mt-4 bg-base-200 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-xs" id="pipeline-log">
+            <div class="text-base-content/40">Pipeline execution log will appear here...</div>
+          </div>
+        </div>
+      </section>
+
     </main>
 
     <!-- FOOTER -->
@@ -292,6 +388,9 @@
         </a></li>
         <li><a onclick="scrollToSection('section-users')" class="sidebar-link gap-2">
           <i data-lucide="users-2" class="w-4 h-4"></i> User Segments
+        </a></li>
+        <li><a onclick="scrollToSection('section-pipeline')" class="sidebar-link gap-2">
+          <i data-lucide="workflow" class="w-4 h-4"></i> Pipeline
         </a></li>
 
         <li class="menu-title text-xs opacity-60 uppercase tracking-wider px-2 mt-4 mb-1">Data Sources</li>
@@ -725,6 +824,156 @@ function toast(msg, type = 'info') {
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // INIT
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// PIPELINE — LIVE STEP FUNCTIONS MONITORING
+let pipelineRunning = false;
+let pipelinePollingInterval = null;
+let currentExecutionArn = null;
+
+function setNodeState(nodeId, state) {
+  const el = document.getElementById(nodeId);
+  if (!el) return;
+  el.className = el.className
+    .replace(/badge-ghost|badge-success|badge-warning|badge-error|badge-primary|animate-pulse/g, '')
+    .replace(/\s+/g, ' ').trim();
+  if (state === 'running') {
+    el.classList.add('badge-warning', 'animate-pulse');
+    el.style.boxShadow = '0 0 12px rgba(234,179,8,0.5)';
+  } else if (state === 'success') {
+    el.classList.add('badge-success');
+    el.style.boxShadow = '0 0 8px rgba(34,197,94,0.4)';
+  } else if (state === 'failed') {
+    el.classList.add('badge-error');
+    el.style.boxShadow = '0 0 8px rgba(239,68,68,0.4)';
+  } else {
+    el.classList.add('badge-ghost');
+    el.style.boxShadow = 'none';
+  }
+}
+
+function setParentState(parentId, state) {
+  const el = document.getElementById(parentId);
+  if (!el) return;
+  el.classList.remove('border-base-300','border-success','border-warning','border-error');
+  if (state === 'running') el.classList.add('border-warning');
+  else if (state === 'success') el.classList.add('border-success');
+  else if (state === 'failed') el.classList.add('border-error');
+  else el.classList.add('border-base-300');
+}
+
+function pipelineLog(msg, type) {
+  const log = document.getElementById('pipeline-log');
+  const time = new Date().toLocaleTimeString();
+  const icons = { success: '\u2705', error: '\u274C', warn: '\u23F3', info: '\u25B6' };
+  const color = type==='success'?'text-success':type==='error'?'text-error':type==='warn'?'text-warning':'text-base-content/70';
+  log.innerHTML += `<div class="${color}">${icons[type]||''} [${time}] ${msg}</div>`;
+  log.scrollTop = log.scrollHeight;
+}
+
+function resetPipeline() {
+  if (pipelinePollingInterval) { clearInterval(pipelinePollingInterval); pipelinePollingInterval = null; }
+  pipelineRunning = false;
+  currentExecutionArn = null;
+  document.getElementById('pipeline-log').innerHTML = '<div class="text-base-content/40">Click "Start Execution" to trigger the pipeline...</div>';
+  const statusEl = document.getElementById('pipeline-status-text');
+  statusEl.textContent = 'Idle';
+  statusEl.className = 'text-xs text-base-content/50';
+  document.getElementById('btn-run-pipeline').disabled = false;
+  ['pn-validate','pn-etl-txn','pn-etl-ship','pn-etl-sell','pn-crawler',
+   'pn-redshift','pn-refresh','pn-emr-seller','pn-emr-user','pn-ml-load','pn-success','pn-failure']
+    .forEach(id => setNodeState(id, 'pending'));
+  setParentState('pn-parallel-etl', 'pending');
+  setParentState('pn-parallel-post', 'pending');
+}
+
+async function simulatePipeline() {
+  if (!config.apiUrl) { toast('Configure API first', 'error'); return; }
+  if (pipelineRunning) return;
+  pipelineRunning = true;
+  resetPipeline();
+  document.getElementById('pipeline-log').innerHTML = '';
+  document.getElementById('btn-run-pipeline').disabled = true;
+  const statusEl = document.getElementById('pipeline-status-text');
+  statusEl.textContent = 'STARTING...';
+  statusEl.className = 'text-xs text-warning font-bold animate-pulse';
+  pipelineLog('Starting Step Functions execution...', 'info');
+
+  try {
+    const res = await fetch(config.apiUrl + '/pipeline/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': config.apiKey || '' },
+      body: JSON.stringify({ key: 'transactions/transactions.csv', emr_cluster_id: 'none' }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.executionArn) throw new Error(data.error || 'Failed to start');
+
+    currentExecutionArn = data.executionArn;
+    pipelineLog('Execution ARN: ' + data.executionArn.split(':').pop(), 'success');
+    statusEl.textContent = 'RUNNING';
+
+    // Poll every 5 seconds
+    pipelinePollingInterval = setInterval(pollPipelineStatus, 5000);
+    setTimeout(pollPipelineStatus, 1000);
+  } catch (e) {
+    pipelineLog('ERROR: ' + e.message, 'error');
+    statusEl.textContent = 'ERROR';
+    statusEl.className = 'text-xs text-error font-bold';
+    document.getElementById('btn-run-pipeline').disabled = false;
+    pipelineRunning = false;
+  }
+}
+
+async function pollPipelineStatus() {
+  if (!currentExecutionArn || !config.apiUrl) return;
+  try {
+    const url = config.apiUrl + '/pipeline/status?executionArn=' + encodeURIComponent(currentExecutionArn);
+    const res = await fetch(url, { headers: { 'x-api-key': config.apiKey || '' } });
+    const data = await res.json();
+    if (!res.ok) return;
+
+    // Update nodes
+    const ns = data.nodeStates || {};
+    Object.entries(ns).forEach(([id, st]) => setNodeState(id, st));
+
+    // Update parent borders
+    const etl = ['pn-etl-txn','pn-etl-ship','pn-etl-sell'].map(id => ns[id]).filter(Boolean);
+    if (etl.includes('running')) setParentState('pn-parallel-etl', 'running');
+    else if (etl.length === 3 && etl.every(s => s==='success')) setParentState('pn-parallel-etl', 'success');
+    else if (etl.includes('failed')) setParentState('pn-parallel-etl', 'failed');
+
+    const pp = ['pn-redshift','pn-refresh','pn-emr-seller','pn-emr-user'].map(id => ns[id]).filter(Boolean);
+    if (pp.includes('running')) setParentState('pn-parallel-post', 'running');
+    else if (pp.length > 0 && pp.every(s => s==='success')) setParentState('pn-parallel-post', 'success');
+    else if (pp.includes('failed')) setParentState('pn-parallel-post', 'failed');
+
+    // Log current state change
+    if (data.currentState) {
+      const lastLog = document.getElementById('pipeline-log').lastElementChild;
+      const lastText = lastLog ? lastLog.textContent : '';
+      if (!lastText.includes(data.currentState)) {
+        pipelineLog(data.currentState + ' — ' + (data.status === 'RUNNING' ? 'executing' : data.status), 'warn');
+      }
+    }
+
+    // Check terminal state
+    const statusEl = document.getElementById('pipeline-status-text');
+    if (data.status === 'SUCCEEDED') {
+      clearInterval(pipelinePollingInterval);
+      statusEl.textContent = 'SUCCEEDED';
+      statusEl.className = 'text-xs text-success font-bold';
+      pipelineLog('Pipeline SUCCEEDED!', 'success');
+      document.getElementById('btn-run-pipeline').disabled = false;
+      pipelineRunning = false;
+    } else if (['FAILED','TIMED_OUT','ABORTED'].includes(data.status)) {
+      clearInterval(pipelinePollingInterval);
+      statusEl.textContent = data.status;
+      statusEl.className = 'text-xs text-error font-bold';
+      pipelineLog('Pipeline ' + data.status + (data.currentState ? ' at: ' + data.currentState : ''), 'error');
+      document.getElementById('btn-run-pipeline').disabled = false;
+      pipelineRunning = false;
+    }
+  } catch(e) { /* silent */ }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   lucide.createIcons();
 

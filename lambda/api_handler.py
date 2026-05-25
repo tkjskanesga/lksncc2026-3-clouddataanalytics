@@ -53,9 +53,10 @@ def lambda_handler(event, context):
     """Route API requests to appropriate handlers."""
     try:
         path         = event.get('path', '')
+        http_method  = event.get('httpMethod', 'GET')
         query_params = event.get('queryStringParameters') or {}
 
-        logger.info(f"Request: {event.get('httpMethod')} {path} params={query_params}")
+        logger.info(f"Request: {http_method} {path} params={query_params}")
 
         if path == '/health':
             return handle_health()
@@ -67,6 +68,13 @@ def lambda_handler(event, context):
             return handle_funnel_analytics(query_params)
         elif path == '/analytics/recommendations':
             return handle_recommendations(query_params)
+        elif path == '/pipeline/execute' and http_method == 'POST':
+            body = json.loads(event.get('body') or '{}')
+            return handle_pipeline_execute(body)
+        elif path == '/pipeline/status':
+            return handle_pipeline_status(query_params)
+        elif path == '/pipeline/executions':
+            return handle_pipeline_executions(query_params)
         else:
             return error_response(404, f'Endpoint not found: {path}')
 
@@ -292,6 +300,156 @@ def handle_recommendations(params):
 
     except Exception as e:
         logger.error(f"handle_recommendations error: {e}", exc_info=True)
+        return error_response(500, str(e))
+
+
+# ── Pipeline (Step Functions) Handlers ─────────────────────────────────────────
+
+sfn_client = boto3.client('stepfunctions')
+
+def handle_pipeline_execute(body):
+    """POST /pipeline/execute — Start a new Step Functions execution."""
+    try:
+        account_id = boto3.client('sts').get_caller_identity()['Account']
+        region = os.environ.get('AWS_REGION', 'us-east-1')
+        sm_arn = f"arn:aws:states:{region}:{account_id}:stateMachine:nusa-pipeline-orchestrator"
+
+        raw_bucket = os.environ.get('RAW_BUCKET', f'nusa-raw-data-{account_id}')
+        processed_bucket = os.environ.get('PROCESSED_BUCKET', f'nusa-processed-data-{account_id}')
+        curated_bucket = os.environ.get('CURATED_BUCKET', f'nusa-curated-data-{account_id}')
+        sns_topic_arn = os.environ.get('SNS_TOPIC_ARN', f'arn:aws:sns:{region}:{account_id}:nusa-alerts')
+        emr_cluster_id = body.get('emr_cluster_id', 'none')
+
+        sfn_input = json.dumps({
+            'bucket': raw_bucket,
+            'key': body.get('key', 'transactions/transactions.csv'),
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'sns_topic_arn': sns_topic_arn,
+            'processed_bucket': processed_bucket,
+            'curated_bucket': curated_bucket,
+            'emr_cluster_id': emr_cluster_id,
+        })
+
+        resp = sfn_client.start_execution(
+            stateMachineArn=sm_arn,
+            input=sfn_input,
+        )
+
+        return success_response({
+            'executionArn': resp['executionArn'],
+            'startDate': resp['startDate'].isoformat(),
+            'status': 'RUNNING',
+        })
+
+    except Exception as e:
+        logger.error(f"handle_pipeline_execute error: {e}", exc_info=True)
+        return error_response(500, str(e))
+
+
+def handle_pipeline_status(params):
+    """GET /pipeline/status?executionArn=... — Get execution status with state details."""
+    try:
+        execution_arn = params.get('executionArn', '')
+        if not execution_arn:
+            return error_response(400, 'Missing required parameter: executionArn')
+
+        resp = sfn_client.describe_execution(executionArn=execution_arn)
+        status = resp['status']
+
+        # Get execution history to determine which states completed
+        history_resp = sfn_client.get_execution_history(
+            executionArn=execution_arn,
+            maxResults=100,
+            reverseOrder=False,
+        )
+
+        states = {}
+        current_state = None
+        for event in history_resp.get('events', []):
+            etype = event['type']
+            if etype == 'TaskStateEntered' or etype == 'ParallelStateEntered':
+                name = event.get('stateEnteredEventDetails', {}).get('name', '')
+                states[name] = 'running'
+                current_state = name
+            elif etype == 'TaskStateExited' or etype == 'ParallelStateExited':
+                name = event.get('stateExitedEventDetails', {}).get('name', '')
+                states[name] = 'success'
+            elif etype in ('TaskFailed', 'ExecutionFailed'):
+                if current_state:
+                    states[current_state] = 'failed'
+
+        # Map state names to frontend node IDs
+        state_to_node = {
+            'ValidateInput': 'pn-validate',
+            'ParallelETL': 'pn-parallel-etl',
+            'ETLTransactions': 'pn-etl-txn',
+            'ETLShipments': 'pn-etl-ship',
+            'ETLSellers': 'pn-etl-sell',
+            'RunCrawler': 'pn-crawler',
+            'ParallelPostProcessing': 'pn-parallel-post',
+            'LoadToRedshift': 'pn-redshift',
+            'RefreshViews': 'pn-refresh',
+            'RunEMRSellerScoring': 'pn-emr-seller',
+            'RunEMRUserSegmentation': 'pn-emr-user',
+            'LoadMLFeatures': 'pn-ml-load',
+            'NotifySuccess': 'pn-success',
+            'NotifyFailure': 'pn-failure',
+            'Success': 'pn-success',
+            'Failure': 'pn-failure',
+        }
+
+        node_states = {}
+        for state_name, state_status in states.items():
+            node_id = state_to_node.get(state_name)
+            if node_id:
+                node_states[node_id] = state_status
+
+        return success_response({
+            'executionArn': execution_arn,
+            'status': status,
+            'startDate': resp['startDate'].isoformat(),
+            'stopDate': resp.get('stopDate', datetime.utcnow()).isoformat() if status != 'RUNNING' else None,
+            'nodeStates': node_states,
+            'currentState': current_state,
+            'stateDetails': states,
+        })
+
+    except Exception as e:
+        logger.error(f"handle_pipeline_status error: {e}", exc_info=True)
+        return error_response(500, str(e))
+
+
+def handle_pipeline_executions(params):
+    """GET /pipeline/executions — List recent executions."""
+    try:
+        account_id = boto3.client('sts').get_caller_identity()['Account']
+        region = os.environ.get('AWS_REGION', 'us-east-1')
+        sm_arn = f"arn:aws:states:{region}:{account_id}:stateMachine:nusa-pipeline-orchestrator"
+
+        limit = min(int(params.get('limit', '10')), 20)
+
+        resp = sfn_client.list_executions(
+            stateMachineArn=sm_arn,
+            maxResults=limit,
+        )
+
+        executions = []
+        for ex in resp.get('executions', []):
+            executions.append({
+                'executionArn': ex['executionArn'],
+                'name': ex['name'],
+                'status': ex['status'],
+                'startDate': ex['startDate'].isoformat(),
+                'stopDate': ex.get('stopDate', '').isoformat() if ex.get('stopDate') else None,
+            })
+
+        return success_response({
+            'executions': executions,
+            'count': len(executions),
+        })
+
+    except Exception as e:
+        logger.error(f"handle_pipeline_executions error: {e}", exc_info=True)
         return error_response(500, str(e))
 
 
